@@ -147,7 +147,7 @@ def set_job(jid, **kw):  # job state lives in MongoDB, so it survives a server r
 
 def wait_for_kaggle(jid, slug, started):
     fails = 0
-    while time.time() - started < 45 * 60:
+    while time.time() - started < 25 * 60:
         r = kaggle("kernels", "status", slug)
         if r.returncode:  # the CLI itself failed (network, etc.). Don't treat that as a failed run.
             fails += 1
@@ -213,7 +213,7 @@ def generate():
     if not LOCK.acquire(blocking=False): return jsonify(error="A clip is already being generated. Wait for it to finish."), 409
     jid = uuid.uuid4().hex[:8]
     db.jobs.insert_one({"_id": jid, "state": "running", "status": "Queued", "owner": uid(), "created": time.time(), "updated": time.time()})
-    threading.Thread(target=run_job, args=(jid, voice, b["text"].strip()[:5000]), daemon=True).start()
+    threading.Thread(target=run_job, args=(jid, voice, b["text"].strip()[:500]), daemon=True).start()
     return jsonify(id=jid)
 
 @app.get("/api/jobs/active")
@@ -236,9 +236,11 @@ def audio(jid):
     if not db.jobs.find_one({"_id": jid, "owner": uid()}) or not f.exists(): return jsonify(error="No audio for this job."), 404
     return send_file(f, mimetype="audio/mpeg", conditional=True)
 
+# Runs on import so it also works under gunicorn (Render), not only with "python app.py".
+try:
+    db.users.create_index("username_lower", unique=True); db.users.create_index("email", unique=True)
+except Exception as e: print("Could not create user indexes:", e, flush=True)
+resume_jobs()
+
 if __name__ == "__main__":
-    try:
-        db.users.create_index("username_lower", unique=True); db.users.create_index("email", unique=True)
-    except Exception as e: print("Could not create user indexes:", e, flush=True)
-    resume_jobs()
     app.run(port=5000)
