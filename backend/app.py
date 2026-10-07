@@ -234,7 +234,8 @@ def job(jid):
 def audio(jid):
     f = WORK / jid / "out" / "output.mp3"
     if not db.jobs.find_one({"_id": jid, "owner": uid()}) or not f.exists(): return jsonify(error="No audio for this job."), 404
-    return send_file(f, mimetype="audio/mpeg", conditional=True)
+    dl = request.args.get("dl")  # ?dl=1 forces a real file download (needed by mobile browsers)
+    return send_file(f, mimetype="audio/mpeg", conditional=True, as_attachment=bool(dl), download_name="speech.mp3")
 
 # Runs on import so it also works under gunicorn (Render), not only with "python app.py".
 try:

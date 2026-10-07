@@ -8,6 +8,23 @@ const api = async (url, opts) => {
   return j;
 };
 
+// Mobile browsers often ignore <a download> or open the file in a player. Fetch it as a blob instead,
+// then share it (phones: opens the share sheet / "Save to Files") or save it (desktop).
+async function downloadAudio(job) {
+  try {
+    const r = await fetch(`/api/jobs/${job}/audio?dl=1`, { credentials: "same-origin" });
+    if (!r.ok) throw new Error("Could not fetch the audio.");
+    const file = new File([await r.blob()], "speech.mp3", { type: "audio/mpeg" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: "VoiceLab speech" }); return; }
+      catch (e) { if (e.name === "AbortError") return; }
+    }
+    const url = URL.createObjectURL(file), a = document.createElement("a");
+    a.href = url; a.download = "speech.mp3"; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  } catch (e) { alert(e.message); }
+}
+
 function AddVoice({ onClose, onSaved }) {
   const [f, setF] = useState({ name: "", description: "", transcript: "" });
   const [blob, setBlob] = useState(null), [rec, setRec] = useState(false);
@@ -129,7 +146,7 @@ function Speech({ voices, voiceId, setVoiceId }) {
       <button className="btn" style={{ width: "100%" }} disabled={!voiceId || !text.trim() || working} onClick={go}>{working ? "Generating…" : "Generate"}</button>
       {working && <p className="status">{status}. Keep this tab open.</p>}
       {err && <p className="err">{err}</p>}
-      {status === "done" && (<><audio controls src={`/api/jobs/${job}/audio`} /><p><a href={`/api/jobs/${job}/audio`} download="speech.mp3">Download audio</a></p></>)}
+      {status === "done" && (<><audio controls src={`/api/jobs/${job}/audio`} /><p><button className="btn" onClick={() => downloadAudio(job)}>Download audio</button></p></>)}
     </>
   );
 }
