@@ -10,18 +10,7 @@
       "framework": "vite"
     }
   },
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": {
-        "service": "backend"
-      }
-    },
-    {
-      "source": "/(.*)",
-      "destination": {
-        "service": "frontend"
-      }
-    }
-  ]
+     "rewrites": [
+     { "source": "/api/:path*", "destination": "https://voicelab-rsvg.onrender.com/api/:path*" }
+   ]
 }
