@@ -1,0 +1,36 @@
+:root{--ink:#1c1b22;--mute:#6b6b76;--line:#e4e4e9;--bg:#fafafa;--card:#fff;--err:#b3261e}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif}
+main{max-width:760px;margin:0 auto;padding:32px 20px 80px}
+nav{display:flex;gap:24px;border-bottom:1px solid var(--line);margin-bottom:32px}
+nav button{background:none;border:0;padding:12px 0;font:inherit;color:var(--mute);cursor:pointer;border-bottom:2px solid transparent}
+nav button.on{color:var(--ink);border-color:var(--ink)}
+h1{font-size:28px;margin:0 0 6px}p.sub{color:var(--mute);margin:0 0 24px;max-width:60ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:6px}
+.card.add{align-items:center;justify-content:center;min-height:130px;cursor:pointer;color:var(--mute);border-style:dashed}
+.card h3{margin:0;font-size:16px}.card small{color:var(--mute)}.row{display:flex;gap:8px;margin-top:auto;padding-top:10px}
+button.btn{background:var(--ink);color:#fff;border:0;border-radius:8px;padding:10px 16px;font:inherit;cursor:pointer}
+button.btn:disabled{opacity:.5;cursor:default}button.ghost{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer}
+button:focus-visible,select:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid #4b6bfb;outline-offset:2px}
+input,textarea,select{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff;margin:4px 0 14px}
+label{font-weight:500;font-size:14px}.count{text-align:right;color:var(--mute);font-size:13px;margin-top:-10px;margin-bottom:14px}
+.overlay{position:fixed;inset:0;background:rgba(20,20,30,.45);display:grid;place-items:center;padding:16px}
+.modal{background:#fff;border-radius:12px;padding:24px;width:100%;max-width:480px;max-height:92vh;overflow:auto}
+.modal h2{margin:0 0 16px}.rec{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.err{color:var(--err)}.status{color:var(--mute);margin:14px 0}audio{width:100%;margin-top:14px}
+.check{display:flex;gap:8px;font-weight:400;align-items:flex-start}.check input{width:auto;margin:4px 0 0}
+.top{display:flex;align-items:center;justify-content:space-between;max-width:960px;margin:0 auto;padding:18px 20px}
+.brand{font-weight:700;font-size:20px;color:var(--ink);text-decoration:none}
+.toplinks{display:flex;align-items:center;gap:16px}.toplinks a{color:var(--ink);text-decoration:none}
+.ghost-link{padding:8px 14px;border:1px solid var(--line);border-radius:8px}
+.solid-link{padding:8px 14px;background:var(--ink);color:#fff!important;border-radius:8px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.hero{padding:72px 0 56px;max-width:640px}.hero h1{font-size:44px;line-height:1.15;margin:0 0 16px}
+.hero p{font-size:18px;color:var(--mute);margin:0 0 28px}
+.cta{display:inline-block;background:var(--ink);color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px}
+.section{border-top:1px solid var(--line);padding:40px 0;max-width:640px}.section h2{margin:0 0 12px}
+.section li{margin-bottom:8px}
+.authcard{max-width:400px;margin:48px auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:28px}
+.authcard h1{font-size:24px;margin:0 0 20px}.alt{text-align:center;color:var(--mute);font-size:14px;margin:18px 0 0}
+.banner{background:#fdecea;color:var(--err);text-align:center;padding:10px 16px}
+nav button:last-child{border-bottom:0}

@@ -1,0 +1,5 @@
+{"name":"voicelab-root","private":true,
+"scripts":{
+"setup":"npm install && npm --prefix frontend install && python -m pip install -r backend/requirements.txt",
+"dev":"concurrently -k -n api,web -c blue,green \"python backend/app.py\" \"npm --prefix frontend run dev\""},
+"devDependencies":{"concurrently":"^9.0.0"}}
