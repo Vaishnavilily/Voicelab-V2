@@ -14,7 +14,7 @@ run = lambda c: subprocess.run(c, shell=True, check=True)
 PY = "/tmp/venv/bin/python"
 run("pip install -q uv && uv venv --python 3.11 /tmp/venv")
 run(f"uv pip install -q --python {PY} git+https://github.com/ai4bharat/IndicF5.git soundfile librosa")
-run(f'uv pip install -q --python {PY} "transformers==4.49.0" "datasets==3.2.0" "huggingface_hub>=0.30,<1.0" torchcodec')
+run(f'uv pip install -q --python {PY} "transformers==4.49.0" "datasets==3.2.0" "pyarrow>=15,<19" "huggingface_hub>=0.30,<1.0" torchcodec')
 open("gen.py", "w").write('''
 import json, numpy as np, soundfile as sf, torch
 from transformers import AutoModel
