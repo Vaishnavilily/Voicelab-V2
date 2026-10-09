@@ -264,7 +264,7 @@ def generate():
     except (TypeError, ValueError): speed = 1.0
     jid = uuid.uuid4().hex[:8]
     db.jobs.insert_one({"_id": jid, "state": "running", "status": "Queued", "owner": uid(), "speed": speed, "created": time.time(), "updated": time.time()})
-    threading.Thread(target=run_job, args=(jid, voice, b["text"].strip()[:500]), daemon=True).start()
+    threading.Thread(target=run_job, args=(jid, voice, b["text"].strip()[:5000]), daemon=True).start()
     return jsonify(id=jid)
 
 @app.get("/api/jobs/active")
