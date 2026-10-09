@@ -1,4 +1,4 @@
-import os, re, json, time, uuid, base64, hashlib, secrets, smtplib, subprocess, threading, pathlib
+import io, os, re, json, time, uuid, base64, hashlib, secrets, smtplib, subprocess, threading, pathlib
 from email.message import EmailMessage
 from functools import wraps
 from flask import Flask, request, jsonify, send_file, session
@@ -19,12 +19,25 @@ WORK = pathlib.Path(__file__).parent / "jobs"; WORK.mkdir(exist_ok=True)
 TEMPLATE = (pathlib.Path(__file__).parent / "kernel_template.py").read_text()
 LOCK = threading.Lock()  # one clip at a time
 MAX_REF_SECONDS = 12
+EMOTIONS = ["Neutral", "Happy", "Excited", "Calm", "Sad", "Angry", "Serious"]
+MIN_SPEED, MAX_SPEED = 0.7, 1.3
+# Developer accounts (comma-separated usernames in ADMIN_USERNAMES). Voices they share are shown as "Official"
+# and they can remove any voice from the shared library.
+ADMINS = {x.strip().lower() for x in os.environ.get("ADMIN_USERNAMES", "").split(",") if x.strip()}
 app = Flask(__name__); CORS(app)
 app.secret_key = os.environ["SECRET_KEY"]
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax", PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 14)
 APP_URL = os.environ.get("APP_URL", "http://localhost:5173")
 
 def uid(): return session.get("uid")
+def is_admin(): return (session.get("name") or "").lower() in ADMINS
+def user_json(): return {"username": session.get("name"), "admin": is_admin()}
+
+def get_voice(vid, mine_only=False):  # a voice the user owns, or (unless mine_only) one shared in the library
+    try: oid = ObjectId(vid)
+    except (InvalidId, TypeError): return None
+    q = {"_id": oid, "owner": uid()} if mine_only else {"_id": oid, "$or": [{"owner": uid()}, {"shared": True}]}
+    return db.voices.find_one(q)
 
 def login_required(f):
     @wraps(f)
@@ -45,7 +58,7 @@ def valid_password(p): return isinstance(p, str) and 8 <= len(p) <= 128
 
 def start_session(u):
     session.clear(); session.permanent = True; session["uid"] = str(u["_id"]); session["name"] = u["username"]
-    return jsonify(user={"username": u["username"]})
+    return jsonify(user=user_json())
 
 @app.post("/api/auth/signup")
 def signup():
@@ -73,7 +86,7 @@ def login():
 def logout(): session.clear(); return jsonify(ok=True)
 
 @app.get("/api/auth/me")
-def me(): return jsonify(user={"username": session["name"]} if uid() else None)
+def me(): return jsonify(user=user_json() if uid() else None)
 
 @app.post("/api/auth/forgot")
 def forgot():
@@ -107,8 +120,10 @@ def to_wav(raw):  # any browser format -> 24 kHz mono wav, leading silence trimm
                          "between words, and make the transcript match what is left.")
     return p.stdout
 
-def to_mp3(wav, mp3):
-    p = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(wav), "-codec:a", "libmp3lame", "-q:a", "2", str(mp3)],
+def to_mp3(wav, mp3, speed=1.0):
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(wav)]
+    if abs(speed - 1.0) > 0.01: cmd += ["-filter:a", f"atempo={speed:.3f}"]  # changes pace, keeps pitch
+    p = subprocess.run(cmd + ["-codec:a", "libmp3lame", "-q:a", "2", str(mp3)],
                        capture_output=True, text=True)
     if p.returncode: raise RuntimeError("Could not make the MP3: " + p.stderr)
 
@@ -116,7 +131,34 @@ def to_mp3(wav, mp3):
 @login_required
 def voices():
     return jsonify([{"id": str(v["_id"]), "name": v["name"], "description": v.get("description", ""),
-                     "transcript": v["transcript"]} for v in db.voices.find({"owner": uid()}).sort("_id", -1)])
+                     "transcript": v["transcript"], "emotion": v.get("emotion", "Neutral"), "shared": bool(v.get("shared")),
+                     "official": bool(v.get("official"))} for v in db.voices.find({"owner": uid()}).sort("_id", -1)])
+
+@app.get("/api/library")
+@login_required
+def library():  # voices any user has shared; the developer's "official" samples come first
+    out = [{"id": str(v["_id"]), "name": v["name"], "description": v.get("description", ""),
+            "emotion": v.get("emotion", "Neutral"), "official": bool(v.get("official")),
+            "by": v.get("owner_name", "a user"), "mine": v.get("owner") == uid()}
+           for v in db.voices.find({"shared": True}).sort("_id", -1)]
+    out.sort(key=lambda x: not x["official"])  # stable sort: official first, then newest
+    return jsonify(out)
+
+@app.get("/api/voices/<vid>/sample")
+@login_required
+def sample(vid):  # lets people listen to a voice sample before using it
+    v = get_voice(vid)
+    if not v: return jsonify(error="Unknown voice."), 404
+    return send_file(io.BytesIO(fs.get(v["file_id"]).read()), mimetype="audio/wav", conditional=True)
+
+@app.post("/api/voices/<vid>/share")
+@login_required
+def share_voice(vid):  # only the owner can add their voice to the library or take it back out
+    v = get_voice(vid, mine_only=True)
+    if not v: return jsonify(error="Unknown voice."), 404
+    on = bool((request.get_json(silent=True) or {}).get("shared"))
+    db.voices.update_one({"_id": v["_id"]}, {"$set": {"shared": on, "official": on and is_admin(), "owner_name": session.get("name")}})
+    return jsonify(ok=True)
 
 @app.post("/api/voices")
 @login_required
@@ -126,15 +168,23 @@ def add_voice():
     try: wav = to_wav(f.read())
     except ValueError as e: return jsonify(error=str(e)), 400
     except Exception as e: return jsonify(error=f"Could not read the audio: {e}"), 400
+    emotion = request.form.get("emotion", "Neutral")
+    if emotion not in EMOTIONS: emotion = "Neutral"
+    share = request.form.get("share", "") in ("1", "true", "on")
     fid = fs.put(wav, filename=name + ".wav")
     db.voices.insert_one({"name": name, "description": request.form.get("description", ""),
-                          "transcript": tr, "file_id": fid, "owner": uid()})
+                          "transcript": tr, "file_id": fid, "owner": uid(), "emotion": emotion,
+                          "shared": share, "official": share and is_admin(), "owner_name": session.get("name")})
     return jsonify(ok=True)
 
 @app.delete("/api/voices/<vid>")
 @login_required
 def del_voice(vid):
-    v = db.voices.find_one_and_delete({"_id": ObjectId(vid), "owner": uid()})
+    try: oid = ObjectId(vid)
+    except (InvalidId, TypeError): return jsonify(error="Unknown voice."), 404
+    # owners remove their own voices; a developer can also take any voice out of the shared library
+    q = {"_id": oid} if is_admin() and db.voices.find_one({"_id": oid, "shared": True}) else {"_id": oid, "owner": uid()}
+    v = db.voices.find_one_and_delete(q)
     if v: fs.delete(v["file_id"])
     return jsonify(ok=True)
 
@@ -186,7 +236,7 @@ def run_job(jid, voice=None, text=None, resume=False):
         r = kaggle("kernels", "output", slug, "-p", str(d / "out"))
         wav = d / "out" / "output.wav"
         if not wav.exists(): raise RuntimeError("No audio came back. " + r.stdout + r.stderr)
-        to_mp3(wav, d / "out" / "output.mp3")
+        to_mp3(wav, d / "out" / "output.mp3", float(job.get("speed", 1.0)))
         set_job(jid, state="done", status="done")
         # Audio is saved locally, so remove the notebook (it held the HF token). Failed runs are kept for debugging.
         r = kaggle("kernels", "delete", "-y", slug)
@@ -207,12 +257,13 @@ def resume_jobs():  # called once at startup: pick up a clip that was running wh
 @login_required
 def generate():
     b = request.get_json(silent=True) or {}
-    try: voice = db.voices.find_one({"_id": ObjectId(b.get("voice_id", "")), "owner": uid()})
-    except (InvalidId, TypeError): voice = None
+    voice = get_voice(str(b.get("voice_id", "")))  # your own voice, or one from the shared library
     if not voice or not b.get("text", "").strip(): return jsonify(error="Choose a voice and enter text."), 400
     if not LOCK.acquire(blocking=False): return jsonify(error="A clip is already being generated. Wait for it to finish."), 409
+    try: speed = min(MAX_SPEED, max(MIN_SPEED, float(b.get("speed", 1.0))))
+    except (TypeError, ValueError): speed = 1.0
     jid = uuid.uuid4().hex[:8]
-    db.jobs.insert_one({"_id": jid, "state": "running", "status": "Queued", "owner": uid(), "created": time.time(), "updated": time.time()})
+    db.jobs.insert_one({"_id": jid, "state": "running", "status": "Queued", "owner": uid(), "speed": speed, "created": time.time(), "updated": time.time()})
     threading.Thread(target=run_job, args=(jid, voice, b["text"].strip()[:500]), daemon=True).start()
     return jsonify(id=jid)
 

@@ -117,11 +117,11 @@ export default function Root() {
   useEffect(() => {
     const h = () => setRoute(parse()), out = () => setUser(null);
     addEventListener("hashchange", h); addEventListener("voicelab-logout", out);
-    call("/api/auth/me").then((j) => setUser(j.user?.username || null)).catch(() => { setUser(null); setDown(true); });
+    call("/api/auth/me").then((j) => setUser(j.user || null)).catch(() => { setUser(null); setDown(true); });
     return () => { removeEventListener("hashchange", h); removeEventListener("voicelab-logout", out); };
   }, []);
   const logout = async () => { await call("/api/auth/logout", {}).catch(() => {}); setUser(null); goto("/"); };
-  const onAuth = (u) => { setUser(u.username); setDown(false); goto("/studio"); };
+  const onAuth = (u) => { setUser(u); setDown(false); goto("/studio"); };
   if (user === undefined) return <p className="status" style={{ padding: 24 }}>Loading…</p>;
 
   let path = route.path;

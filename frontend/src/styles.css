@@ -34,3 +34,8 @@ label{font-weight:500;font-size:14px}.count{text-align:right;color:var(--mute);f
 .authcard h1{font-size:24px;margin:0 0 20px}.alt{text-align:center;color:var(--mute);font-size:14px;margin:18px 0 0}
 .banner{background:#fdecea;color:var(--err);text-align:center;padding:10px 16px}
 nav button:last-child{border-bottom:0}
+
+.badge{align-self:flex-start;font-size:11px;padding:2px 8px;border-radius:99px;background:#eef1ff;color:#3347c9}
+.badge.off{background:#e8f6ee;color:#1d7a46}
+.card audio{width:100%;margin-top:4px}
+p.sub .ghost{display:inline;padding:2px 8px}

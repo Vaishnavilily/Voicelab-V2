@@ -25,10 +25,12 @@ async function downloadAudio(job) {
   } catch (e) { alert(e.message); }
 }
 
-function AddVoice({ onClose, onSaved }) {
-  const [f, setF] = useState({ name: "", description: "", transcript: "" });
+const EMOTIONS = ["Neutral", "Happy", "Excited", "Calm", "Sad", "Angry", "Serious"];
+
+function AddVoice({ onClose, onSaved, admin }) {
+  const [f, setF] = useState({ name: "", description: "", transcript: "", emotion: "Neutral" });
   const [blob, setBlob] = useState(null), [rec, setRec] = useState(false);
-  const [ok, setOk] = useState(false), [err, setErr] = useState(""), [busy, setBusy] = useState(false);
+  const [ok, setOk] = useState(false), [share, setShare] = useState(false), [err, setErr] = useState(""), [busy, setBusy] = useState(false);
   const mr = useRef(null);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
@@ -46,7 +48,7 @@ function AddVoice({ onClose, onSaved }) {
   async function save() {
     setBusy(true); setErr("");
     const d = new FormData();
-    Object.entries(f).forEach(([k, v]) => d.append(k, v)); d.append("audio", blob);
+    Object.entries(f).forEach(([k, v]) => d.append(k, v)); d.append("audio", blob); d.append("share", share ? "1" : "0");
     try { await api("/api/voices", { method: "POST", body: d }); onSaved(); } catch (e) { setErr(e.message); setBusy(false); }
   }
 
@@ -56,6 +58,10 @@ function AddVoice({ onClose, onSaved }) {
         <h2>Add voice</h2>
         <label>Name<input value={f.name} onChange={set("name")} /></label>
         <label>Description (optional)<input value={f.description} onChange={set("description")} /></label>
+        <label>Emotion in this sample
+          <select value={f.emotion} onChange={set("emotion")}>{EMOTIONS.map((e) => <option key={e}>{e}</option>)}</select>
+        </label>
+        <p className="sub" style={{ margin: "-8px 0 14px", fontSize: 13 }}>Speak the sample in this emotion. The generated speech copies the tone of the sample, so add the same speaker again with a different emotion to get a different mood.</p>
         <label>Voice sample (5–10 seconds, one speaker, no background noise)</label>
         <div className="rec">
           <button className="ghost" onClick={toggleRec}>{rec ? "Stop recording" : "Record"}</button>
@@ -68,6 +74,8 @@ function AddVoice({ onClose, onSaved }) {
         </label>
         <label className="check"><input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} />
           I have the right to clone this voice and will not use it to mislead or harm anyone.</label>
+        <label className="check"><input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} />
+          Also add this voice to the shared Library{admin ? " as an official sample" : ""}. Every user will be able to use it. Share only your own voice, or one you have permission to share.</label>
         {err && <p className="err">{err}</p>}
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button className="ghost" onClick={onClose}>Cancel</button>
@@ -78,34 +86,73 @@ function AddVoice({ onClose, onSaved }) {
   );
 }
 
-function Voices({ voices, reload, use }) {
+function Voices({ voices, reload, use, admin, goLibrary }) {
   const [open, setOpen] = useState(false);
+  async function toggleShare(v) {
+    if (!v.shared && !confirm(`Share "${v.name}" with the Library? Every user will be able to use this voice.`)) return;
+    try { await api(`/api/voices/${v.id}/share`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shared: !v.shared }) }); reload(); }
+    catch (e) { alert(e.message); }
+  }
   return (
     <>
       <h1>Your voices</h1>
       <p className="sub">Clone a voice from a short recording, then use it to speak any Telugu text.</p>
+      {!voices.length && <p className="sub">New here? <button className="ghost" onClick={goLibrary}>Browse the Library</button> to try ready-made sample voices, or add your own.</p>}
       <div className="grid">
         <div className="card add" role="button" tabIndex={0} onClick={() => setOpen(true)} onKeyDown={(e) => e.key === "Enter" && setOpen(true)}>
           <span style={{ fontSize: 28 }}>+</span>Add cloned voice
         </div>
         {voices.map((v) => (
           <div className="card" key={v.id}>
+            {v.shared && <span className={"badge" + (v.official ? " off" : "")}>{v.official ? "Official · in Library" : "In Library"}</span>}
             <h3>{v.name}</h3><small>{v.description || "Cloned voice"}</small>
+            <small><b>Emotion:</b> {v.emotion || "Neutral"}</small>
             <div className="row">
               <button className="ghost" onClick={() => use(v.id)}>Use</button>
+              <button className="ghost" onClick={() => toggleShare(v)}>{v.shared ? "Unshare" : "Share"}</button>
               <button className="ghost" onClick={async () => { if (confirm(`Remove "${v.name}"?`)) { await api(`/api/voices/${v.id}`, { method: "DELETE" }); reload(); } }}>Remove</button>
             </div>
           </div>
         ))}
       </div>
-      {open && <AddVoice onClose={() => setOpen(false)} onSaved={() => { setOpen(false); reload(); }} />}
+      {open && <AddVoice admin={admin} onClose={() => setOpen(false)} onSaved={() => { setOpen(false); reload(); }} />}
     </>
   );
 }
 
-function Speech({ voices, voiceId, setVoiceId }) {
+function Library({ library, reload, use, admin }) {
+  async function remove(v) {
+    if (!confirm(`Remove "${v.name}" from the Library for everyone?`)) return;
+    try { await api(`/api/voices/${v.id}`, { method: "DELETE" }); reload(); } catch (e) { alert(e.message); }
+  }
+  return (
+    <>
+      <h1>Voice library</h1>
+      <p className="sub">Sample voices shared by VoiceLab and other users. Listen, then use any of them to speak your text. To share your own voice, add it or press Share on the Voices tab.</p>
+      {!library.length && <p className="sub">No shared voices yet.</p>}
+      <div className="grid">
+        {library.map((v) => (
+          <div className="card" key={v.id}>
+            <span className={"badge" + (v.official ? " off" : "")}>{v.official ? "Official" : v.mine ? "Shared by you" : `by ${v.by}`}</span>
+            <h3>{v.name}</h3><small>{v.description || "Cloned voice"}</small>
+            <small><b>Emotion:</b> {v.emotion}</small>
+            <audio controls preload="none" src={`/api/voices/${v.id}/sample`} />
+            <div className="row">
+              <button className="ghost" onClick={() => use(v.id)}>Use</button>
+              {admin && <button className="ghost" onClick={() => remove(v)}>Remove</button>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function Speech({ voices, library, voiceId, setVoiceId }) {
+  const mine = new Set(voices.map((v) => v.id)), others = library.filter((v) => !mine.has(v.id));
   const [text, setText] = useState(""), [job, setJob] = useState(null), [err, setErr] = useState("");
   const [status, setStatus] = useState("");
+  const [speed, setSpeed] = useState(1);
 
   useEffect(() => {
     if (!job) return;
@@ -124,7 +171,7 @@ function Speech({ voices, voiceId, setVoiceId }) {
 
   async function go() {
     setErr(""); setJob(null); setStatus("Queued");
-    try { setJob((await api("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voice_id: voiceId, text }) })).id); }
+    try { setJob((await api("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voice_id: voiceId, text, speed }) })).id); }
     catch (e) { setErr(e.message); setStatus(""); }
   }
   const working = status && status !== "done" && status !== "error";
@@ -136,8 +183,13 @@ function Speech({ voices, voiceId, setVoiceId }) {
       <label>Voice
         <select value={voiceId} onChange={(e) => setVoiceId(e.target.value)}>
           <option value="">Choose a voice</option>
-          {voices.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+          {voices.length > 0 && <optgroup label="My voices">{voices.map((v) => <option key={v.id} value={v.id}>{v.name} ({v.emotion || "Neutral"})</option>)}</optgroup>}
+          {others.length > 0 && <optgroup label="Library">{others.map((v) => <option key={v.id} value={v.id}>{v.name} ({v.emotion}){v.official ? " ★" : ""}</option>)}</optgroup>}
         </select>
+      </label>
+      <p className="sub" style={{ margin: "-8px 0 14px", fontSize: 13 }}>Tip: the tone of the clip follows the voice sample. For a happy clip, use a sample recorded happy.</p>
+      <label>Speed: {speed.toFixed(2)}x {speed < 0.95 ? "(slower, calmer)" : speed > 1.05 ? "(faster, more energetic)" : "(normal)"}
+        <input type="range" min="0.7" max="1.3" step="0.05" value={speed} onChange={(e) => setSpeed(parseFloat(e.target.value))} style={{ padding: 0 }} />
       </label>
       <label>Text
         <textarea rows={6} maxLength={5000} value={text} onChange={(e) => setText(e.target.value)} placeholder="Type or paste Telugu text." />
@@ -153,18 +205,20 @@ function Speech({ voices, voiceId, setVoiceId }) {
 
 export default function App({ user, onLogout }) {
   const [tab, setTab] = useState("voices"), [voices, setVoices] = useState([]), [voiceId, setVoiceId] = useState("");
-  const reload = () => api("/api/voices").then(setVoices).catch(() => {});
+  const [library, setLibrary] = useState([]);
+  const reload = () => Promise.all([api("/api/voices").then(setVoices), api("/api/library").then(setLibrary)]).catch(() => {});
   useEffect(() => { reload(); }, []);
   return (
     <main>
       <nav>
         <button className={tab === "voices" ? "on" : ""} onClick={() => setTab("voices")}>Voices</button>
+        <button className={tab === "library" ? "on" : ""} onClick={() => setTab("library")}>Library</button>
         <button className={tab === "speech" ? "on" : ""} onClick={() => setTab("speech")}>Speech</button>
-        <button style={{ marginLeft: "auto" }} onClick={onLogout}>Log out ({user})</button>
+        <button style={{ marginLeft: "auto" }} onClick={onLogout}>Log out ({user.username})</button>
       </nav>
-      {tab === "voices"
-        ? <Voices voices={voices} reload={reload} use={(id) => { setVoiceId(id); setTab("speech"); }} />
-        : <Speech voices={voices} voiceId={voiceId} setVoiceId={setVoiceId} />}
+      {tab === "voices" && <Voices voices={voices} reload={reload} admin={user.admin} goLibrary={() => setTab("library")} use={(id) => { setVoiceId(id); setTab("speech"); }} />}
+      {tab === "library" && <Library library={library} reload={reload} admin={user.admin} use={(id) => { setVoiceId(id); setTab("speech"); }} />}
+      {tab === "speech" && <Speech voices={voices} library={library} voiceId={voiceId} setVoiceId={setVoiceId} />}
     </main>
   );
 }
